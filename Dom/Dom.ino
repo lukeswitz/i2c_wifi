@@ -398,7 +398,7 @@ void setup() {
 #endif
 
   SPI.begin(SD_CLK, SD_MISO, SD_MOSI, -1);  // Initialize SPI for SD card
-  if (!SD.begin()) {
+  if (!SD.begin(15, SPI, 40000000)) {
     Serial.println("SD Card initialization failed!");
     unsigned long startMillis = millis();
     const unsigned long blinkInterval = 500;
