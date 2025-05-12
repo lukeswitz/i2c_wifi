@@ -11,6 +11,7 @@
  - Use the code in the `v2` folder
  - Fixed writing to SD
  - Fixed CSV output
+ - Check status and restart i2c
  - New web interface dashboard
 
 `// TODO`
