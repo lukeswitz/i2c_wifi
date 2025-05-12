@@ -1,7 +1,10 @@
 # `AtomHydra`
 
+<img src="https://github.com/user-attachments/assets/01bdd7d9-0dc6-4268-8cbe-86344b9de1c5" width=70%>
+
 ---
-**Branch Mods**
+**Branch Notes**
+ - Use the code in the `v2` folder
  - Fixed writing to SD
  - Fixed CSV output
  - New web interface dashboard
