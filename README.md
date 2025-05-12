@@ -1,5 +1,4 @@
 # `AtomHydra`
- <img src="https://github.com/user-attachments/assets/fd6c2495-4183-491f-aef0-c023d8073ff0" width=50%>
 
 ---
 **Branch Mods**
