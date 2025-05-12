@@ -1,8 +1,9 @@
 /*
    M5Atom-Hydra (Sub)
-   Optimized for M5Atom Lite/Matrix hardware
+   Optimized for M5Atom Matrix hardware with enhanced LED display
 */
 
+// CHOOSE COMMUNICATION
 #define COMM_I2C
 //#define COMM_NOW
 
@@ -12,7 +13,7 @@
 //#define S3LITE
 
 // CHOOSE NODE ID (1-6)
-#define NODEID 2
+#define NODEID 1
 
 // Node Plot
 //     1---2
@@ -77,7 +78,6 @@ int matrix[5][5] = {
 #include <M5AtomS3.h>
 #define SUB_SDA 2
 #define SUB_SCL 1
-// No LED_PIN needed for S3LITE
 #endif
 
 // Constants for network scanning
@@ -127,115 +127,14 @@ int channelIndex = 0;
 const int channelCount = sizeof(channels) / sizeof(channels[0]);
 bool isScanning = false;
 
+// Animation tracking variables
+int animFrame = 0;
+unsigned long lastAnimUpdate = 0;
+unsigned long lastCountDisplay = 0;
+int totalNetworksFound = 0;
+
 #ifdef COMM_I2C
 const int i2c_slave_address = 0x55;
-#endif
-
-// Handle LED functions based on board type
-void setLed(CRGB c) {
-#ifdef S3LITE
-  AtomS3.dis.drawpix(0, c.r, c.g, c.b);
-#else
-  #ifdef MATRIX
-  for (int i = 0; i < NUM_LEDS; i++) {
-    leds[i] = c;
-  }
-  #else
-  leds[0] = c;
-  #endif
-  FastLED.show();
-#endif
-}
-
-void clearLed() {
-#ifdef S3LITE
-  AtomS3.dis.drawpix(0, 0, 0, 0);
-#else
-  setLed(CRGB::Black);
-#endif
-}
-
-void blinkLED(CRGB color) {
-  setLed(color);
-  delay(50);
-  clearLed();
-}
-
-void blinkLEDWhite() { blinkLED(CRGB::White); }
-void blinkLEDGreen() { blinkLED(CRGB::Green); }
-void blinkLEDBlue() { blinkLED(CRGB::Blue); }
-void blinkLEDRed() { blinkLED(CRGB::Red); }
-void blinkLEDPurple() { blinkLED(CRGB::Purple); }
-void blinkLEDYellow() { blinkLED(CRGB::Yellow); }
-
-#ifdef MATRIX
-// Special pattern for Matrix LED display
-void showMatrixPattern(int pattern) {
-  clearLed();
-  
-  switch (pattern) {
-    case 0: // Node ID pattern
-      for (int i = 0; i < NODEID && i < 5; i++) {
-        leds[i] = CRGB::Blue;
-      }
-      break;
-      
-    case 1: // Scanning animation
-      leds[12] = CRGB::Green;
-      for (int i = 0; i < 8; i++) {
-        int pos = (i * 3) % 24;
-        leds[pos] = CRGB(0, 50, 0);
-      }
-      break;
-      
-    case 2: // Channel activity - highlight WiFi channels being scanned
-      for (int i = 0; i < channelCount; i++) {
-        int ch = channels[i];
-        if (ch <= 5) {
-          leds[ch * 2] = CRGB::Blue;
-        } else if (ch <= 10) {
-          leds[ch] = CRGB::Green;
-        } else {
-          leds[ch + 4] = CRGB::Yellow;
-        }
-      }
-      break;
-  }
-  
-  FastLED.show();
-}
-#endif
-
-// Check if a MAC address is already seen
-bool isMACSeen(const String& mac) {
-  for (int i = 0; i < (overFlow ? MAX_MAC_HISTORY : macArrayIndex); i++) {
-    if (macAddressArray[i] == mac) {
-      return true;
-    }
-  }
-  return false;
-}
-
-#ifdef COMM_I2C
-void requestEvent() {
-  if (!scan) {
-    // Only start scanning if dom is ready
-    scan = true;
-    blinkLEDGreen();
-  }
-  
-  if (currentNetworkIndex < networkCount) {
-    Wire.write((byte*)&networks[currentNetworkIndex], sizeof(NetworkInfo));
-    Serial.println("[SUB] Sending network: " + String(networks[currentNetworkIndex].ssid));
-    currentNetworkIndex++;
-    blinkLEDWhite();
-  } else {
-    // If we have nothing to send, start scanning again
-    Serial.println("[SUB] No new networks to send");
-    currentNetworkIndex = 0;
-    networkCount = 0;
-  }
-}
 #endif
 
 #ifdef enableBLE
@@ -282,6 +181,13 @@ boolean seen_mac(unsigned char* mac) {
   return false;
 }
 
+void print_mac(struct mac_addr mac) {
+  for (int x = 0; x < 6; x++) {
+    Serial.print(mac.bytes[x], HEX);
+    Serial.print(":");
+  }
+}
+
 boolean mac_cmp(struct mac_addr addr1, struct mac_addr addr2) {
   for (int y = 0; y < 6; y++) {
     if (addr1.bytes[y] != addr2.bytes[y]) {
@@ -318,17 +224,385 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         if (!seen_mac(mac_bytes)) {
           save_mac(mac_bytes);
           addBleNetwork(advertisedDevice.getName().c_str(), advertisedDevice.getAddress().toString().c_str(), advertisedDevice.getRSSI());
-          blinkLEDPurple();
         }
       }
     }
 };
 #endif
 
+// Handle LED functions based on board type
+void setLed(CRGB c) {
+#ifdef S3LITE
+  AtomS3.dis.drawpix(0, c.r, c.g, c.b);
+#else
+  #ifdef MATRIX
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = c;
+  }
+  #else
+  leds[0] = c;
+  #endif
+  FastLED.show();
+#endif
+}
+
+void clearLed() {
+#ifdef S3LITE
+  AtomS3.dis.drawpix(0, 0, 0, 0);
+#else
+  #ifdef MATRIX
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = CRGB::Black;
+  }
+  #else
+  leds[0] = CRGB::Black;
+  #endif
+  FastLED.show();
+#endif
+}
+
+#ifdef MATRIX
+// Function to display a specific digit (0-9) at an offset position
+void displayDigit(int digit, int offsetX, int offsetY, CRGB color) {
+  // Patterns for 0-9 digits (3x5 pixel format)
+  const uint8_t digitPatterns[10][5] = {
+    // 0
+    {0b111,
+     0b101,
+     0b101,
+     0b101,
+     0b111},
+    // 1
+    {0b010,
+     0b110,
+     0b010,
+     0b010,
+     0b111},
+    // 2
+    {0b111,
+     0b001,
+     0b111,
+     0b100,
+     0b111},
+    // 3
+    {0b111,
+     0b001,
+     0b111,
+     0b001,
+     0b111},
+    // 4
+    {0b101,
+     0b101,
+     0b111,
+     0b001,
+     0b001},
+    // 5
+    {0b111,
+     0b100,
+     0b111,
+     0b001,
+     0b111},
+    // 6
+    {0b111,
+     0b100,
+     0b111,
+     0b101,
+     0b111},
+    // 7
+    {0b111,
+     0b001,
+     0b001,
+     0b001,
+     0b001},
+    // 8
+    {0b111,
+     0b101,
+     0b111,
+     0b101,
+     0b111},
+    // 9
+    {0b111,
+     0b101,
+     0b111,
+     0b001,
+     0b111}
+  };
+
+  // Display the digit pattern on the matrix
+  for (int y = 0; y < 5; y++) {
+    for (int x = 0; x < 3; x++) {
+      if (digitPatterns[digit][y] & (1 << (2 - x))) {
+        // Calculate position with offset
+        int matrixX = x + 1 + offsetX;
+        int matrixY = y + offsetY;
+        
+        // Only set LED if within bounds
+        if (matrixX >= 0 && matrixX < 5 && matrixY >= 0 && matrixY < 5) {
+          leds[matrix[matrixY][matrixX]] = color;
+        }
+      }
+    }
+  }
+}
+
+// Display a number (0-99) on the matrix
+void displayNumber(int number) {
+  clearLed();
+  
+  // Cap at 99 for display purposes
+  if (number > 99) number = 99;
+  
+  if (number < 10) {
+    // Single digit - center it
+    displayDigit(number, 1, 0, CRGB::Green);
+  } else {
+    // Two digits - side by side
+    int tens = number / 10;
+    int ones = number % 10;
+    displayDigit(tens, -1, 0, CRGB::Blue);
+    displayDigit(ones, 2, 0, CRGB::Green);
+  }
+  
+  FastLED.show();
+}
+
+// Scanning animation - shows a radar-like pattern
+void scanningAnimation() {
+  clearLed();
+  
+  // Center point always on
+  leds[matrix[2][2]] = CRGB(0, 50, 0);
+  
+  // Positions for the scanning beam (8 positions in a circle)
+  int positions[8][2] = {
+    {2, 0}, // Top
+    {4, 0}, // Top-right
+    {4, 2}, // Right
+    {4, 4}, // Bottom-right
+    {2, 4}, // Bottom
+    {0, 4}, // Bottom-left
+    {0, 2}, // Left
+    {0, 0}  // Top-left
+  };
+  
+  // Get current position
+  int frame = animFrame % 8;
+  int x = positions[frame][0];
+  int y = positions[frame][1];
+  
+  // Draw beam
+  leds[matrix[y][x]] = CRGB::Green;
+  
+  // Draw path from center to current position
+  int cx = 2, cy = 2; // Center coordinates
+  int dx = (x > cx) ? 1 : ((x < cx) ? -1 : 0);
+  int dy = (y > cy) ? 1 : ((y < cy) ? -1 : 0);
+  
+  int ix = cx, iy = cy;
+  while (ix != x || iy != y) {
+    if (ix != x) ix += dx;
+    if (iy != y) iy += dy;
+    
+    // Skip center as we already set it
+    if (!(ix == cx && iy == cy)) {
+      leds[matrix[iy][ix]] = CRGB(0, 20, 0);
+    }
+  }
+  
+  // Increment animation frame for next time
+  animFrame = (animFrame + 1) % 8;
+  
+  FastLED.show();
+}
+
+// Show channel distribution on matrix
+void displayChannelMap() {
+  clearLed();
+  
+  // Color channels based on range
+  for (int i = 0; i < channelCount; i++) {
+    int ch = channels[i];
+    CRGB channelColor;
+    
+    // Set color based on channel range
+    if (ch <= 5) {
+      channelColor = CRGB::Blue;
+    } else if (ch <= 10) {
+      channelColor = CRGB::Green;
+    } else {
+      channelColor = CRGB::Yellow;
+    }
+    
+    // Map channel numbers logically to the matrix
+    int x, y;
+    if (ch <= 5) {
+      x = ch - 1;
+      y = 0;
+    } else if (ch <= 10) {
+      x = ch - 6;
+      y = 1;
+    } else {
+      x = ch - 11;
+      y = 2;
+    }
+    
+    // Make sure we're within bounds
+    if (x >= 0 && x < 5 && y >= 0 && y < 5) {
+      leds[matrix[y][x]] = channelColor;
+    }
+  }
+  
+  // Show node ID in corner
+  for (int i = 0; i < min(NODEID, 5); i++) {
+    leds[matrix[4][i]] = CRGB::Red;
+  }
+  
+  // Show BLE indicator if enabled
+  #ifdef enableBLE
+  leds[matrix[0][4]] = CRGB::Purple;
+  #endif
+  
+  FastLED.show();
+}
+
+// Show a progress bar visualization
+void displayProgressBar(int percent) {
+  clearLed();
+  
+  int ledsToLight = map(percent, 0, 100, 0, 25);
+  
+  // Fill the matrix progressively (left-to-right, top-to-bottom)
+  for (int i = 0; i < ledsToLight; i++) {
+    int y = i / 5;
+    int x = i % 5;
+    
+    // Create color gradient based on percentage
+    CRGB color;
+    if (percent < 33) {
+      color = CRGB::Green;
+    } else if (percent < 66) {
+      color = CRGB::Yellow;
+    } else {
+      color = CRGB::Red;
+    }
+    
+    leds[matrix[y][x]] = color;
+  }
+  
+  FastLED.show();
+}
+
+// Display WiFi symbol to indicate scanning
+void displayWifiSymbol() {
+  clearLed();
+  
+  // Create a WiFi-like arc symbol (3 arcs)
+  // Bottom arc
+  leds[matrix[4][2]] = CRGB::Blue; // Center bottom
+  
+  // First arc (smallest)
+  leds[matrix[3][1]] = CRGB::Blue;
+  leds[matrix[3][2]] = CRGB::Blue;
+  leds[matrix[3][3]] = CRGB::Blue;
+  
+  // Second arc (medium)
+  leds[matrix[2][0]] = CRGB::Blue;
+  leds[matrix[2][1]] = CRGB::Blue;
+  leds[matrix[2][2]] = CRGB::Blue;
+  leds[matrix[2][3]] = CRGB::Blue;
+  leds[matrix[2][4]] = CRGB::Blue;
+  
+  // Third arc (largest)
+  leds[matrix[1][0]] = CRGB::Blue;
+  leds[matrix[1][1]] = CRGB::Blue;
+  leds[matrix[1][2]] = CRGB::Blue;
+  leds[matrix[1][3]] = CRGB::Blue;
+  leds[matrix[1][4]] = CRGB::Blue;
+  
+  // Add some animation based on time
+  static uint8_t brightness = 150;
+  static bool increasing = true;
+  
+  // Create pulsing effect
+  if (increasing) {
+    brightness += 5;
+    if (brightness >= 250) increasing = false;
+  } else {
+    brightness -= 5;
+    if (brightness <= 100) increasing = true;
+  }
+  
+  // Apply brightness
+  for (int i = 0; i < NUM_LEDS; i++) {
+    if (leds[i].r > 0 || leds[i].g > 0 || leds[i].b > 0) {
+      leds[i].nscale8(brightness);
+    }
+  }
+  
+  FastLED.show();
+}
+#endif
+
+void blinkLED(CRGB color) {
+  setLed(color);
+  delay(50);
+  clearLed();
+}
+
+void blinkLEDWhite() { blinkLED(CRGB::White); }
+void blinkLEDGreen() { blinkLED(CRGB::Green); }
+void blinkLEDBlue() { blinkLED(CRGB::Blue); }
+void blinkLEDRed() { blinkLED(CRGB::Red); }
+void blinkLEDPurple() { blinkLED(CRGB::Purple); }
+void blinkLEDYellow() { blinkLED(CRGB::Yellow); }
+
+// Check if a MAC address is already seen
+bool isMACSeen(const String& mac) {
+  for (int i = 0; i < (overFlow ? MAX_MAC_HISTORY : macArrayIndex); i++) {
+    if (macAddressArray[i] == mac) {
+      return true;
+    }
+  }
+  return false;
+}
+
+#ifdef COMM_I2C
+void requestEvent() {
+  if (!scan) {
+    // Only start scanning if dom is ready
+    scan = true;
+    blinkLEDGreen();
+  }
+  
+  if (currentNetworkIndex < networkCount) {
+    Wire.write((byte*)&networks[currentNetworkIndex], sizeof(NetworkInfo));
+    Serial.println("[SUB] Sending network: " + String(networks[currentNetworkIndex].ssid));
+    currentNetworkIndex++;
+  } else {
+    // If we have nothing to send, start scanning again
+    Serial.println("[SUB] No new networks to send");
+    currentNetworkIndex = 0;
+    networkCount = 0;
+  }
+}
+#endif
+
 // Add a BLE network to our list
 void addBleNetwork(const String& ssid, const String& bssid, int32_t rssi) {
   if (addNetwork(ssid, bssid, rssi, "[BLE]", 0, 'b')) {
     Serial.println("[SUB] Added BLE device: SSID: " + ssid + ", BSSID: " + bssid + ", RSSI: " + String(rssi));
+    totalNetworksFound++;
+    
+    #ifdef MATRIX
+    // Flash purple for BLE
+    leds[matrix[0][4]] = CRGB::Purple;
+    FastLED.show();
+    delay(10);
+    leds[matrix[0][4]] = CRGB::Black;
+    FastLED.show();
+    #else
+    blinkLEDPurple();
+    #endif
   }
 }
 
@@ -336,8 +610,35 @@ void addBleNetwork(const String& ssid, const String& bssid, int32_t rssi) {
 void addWifiNetwork(const String& ssid, const String& bssid, int32_t rssi, wifi_auth_mode_t encryptionType, uint8_t channel) {
   if (addNetwork(ssid, bssid, rssi, getAuthType(encryptionType), channel, 'w')) {
     Serial.println("[SUB] Added WiFi network: SSID: " + ssid + ", BSSID: " + bssid + ", RSSI: " + String(rssi) + ", Channel: " + String(channel));
+    totalNetworksFound++;
     
-    // Blink LED based on channel
+    #ifdef MATRIX
+    // Update display for milestone counts
+    if (networkCount % 10 == 0) {
+      displayNumber(networkCount);
+      delay(200);
+    } else {
+      // Flash color based on channel
+      int x = (channel % 5);
+      int y = (channel / 5) % 5;
+      
+      CRGB channelColor;
+      if (channel <= 5) {
+        channelColor = CRGB::Blue;
+      } else if (channel <= 10) {
+        channelColor = CRGB::Green;
+      } else {
+        channelColor = CRGB::Yellow;
+      }
+      
+      leds[matrix[y][x]] = channelColor;
+      FastLED.show();
+      delay(10);
+      leds[matrix[y][x]] = CRGB::Black;
+      FastLED.show();
+    }
+    #else
+    // For non-matrix devices
     if (channel <= 5) {
       blinkLEDBlue();
     } else if (channel <= 10) {
@@ -345,6 +646,7 @@ void addWifiNetwork(const String& ssid, const String& bssid, int32_t rssi, wifi_
     } else {
       blinkLEDYellow();
     }
+    #endif
   }
 }
 
@@ -454,7 +756,7 @@ void setup() {
   clearLed();
 #else
   FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
-  FastLED.setBrightness(40); // Slightly dimmer for better power efficiency
+  FastLED.setBrightness(40); // Dimmer to save power
   clearLed();
 #endif
 
@@ -477,26 +779,43 @@ void setup() {
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan(); //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
+  pBLEScan->setActiveScan(false); //active scan uses more power
   pBLEScan->setInterval(timePerChannel[0]);
   pBLEScan->setWindow(40);  // less or equal setInterval value
   #endif
   
-  // Blink LED pattern to show which node ID this is
+  #ifdef MATRIX
+  // Startup sequence for Matrix
+  // 1. Count up animation
+  for (int i = 0; i <= 9; i++) {
+    displayNumber(i);
+    delay(100);
+  }
+  delay(500);
+  
+  // 2. Display node ID
+  clearLed();
+  displayNumber(NODEID);
+  delay(1000);
+  
+  // 3. Display channel map
+  displayChannelMap();
+  delay(1500);
+  
+  // 4. WiFi symbol
+  displayWifiSymbol();
+  delay(1000);
+  
+  // 5. Ready to scan
+  scanningAnimation();
+  #else
+  // Startup sequence for non-Matrix
   for (int i = 0; i < NODEID; i++) {
     setLed(CRGB::Blue);
     delay(200);
     clearLed();
     delay(200);
   }
-  
-  #ifdef MATRIX
-  // Special startup animation for Matrix
-  showMatrixPattern(0); // Show node ID
-  delay(1000);
-  showMatrixPattern(2); // Show channel distribution
-  delay(2000);
-  clearLed();
   #endif
   
   Serial.println("Hydra Sub Node " + String(NODEID) + " started! Assigned channels:");
@@ -513,19 +832,32 @@ void setup() {
 
 void loop() {
   if (!scan) {
-    // Wait for signal from dom to start scanning
+    // Wait for signal from Dom to start scanning
+    #ifdef MATRIX
+    if (millis() - lastAnimUpdate > 1000) {
+      displayWifiSymbol();
+      lastAnimUpdate = millis();
+    }
+    #endif
     delay(100);
     return;
   }
   
   // Avoid scanning too frequently
   if (millis() - lastScanTime < scanDelay) {
+    #ifdef MATRIX
+    // Update animation while waiting
+    if (millis() - lastAnimUpdate > 150) {
+      scanningAnimation();
+      lastAnimUpdate = millis();
+    }
+    #endif
     return;
   }
   
   lastScanTime = millis();
   
-  // Only scan if we have room for more networks
+// Only scan if we have room for more networks
   if (networkCount < MAX_NETWORKS && !isScanning) {
     isScanning = true;
     
@@ -534,8 +866,17 @@ void loop() {
     static bool bleScanDone = false;
     
     if (!bleScanDone) {
-      // Indicate BLE scanning
+      #ifdef MATRIX
+      // Show BLE scan indicator
+      clearLed();
+      for (int i = 0; i < 25; i++) {
+        leds[i] = CRGB(20, 0, 20); // Dim purple
+      }
+      leds[matrix[2][2]] = CRGB::Purple; // Bright center
+      FastLED.show();
+      #else
       setLed(CRGB::Purple);
+      #endif
       
       BLEScanResults foundDevices = pBLEScan->start(2.5, false);
       Serial.print("BLE devices found: ");
@@ -552,14 +893,37 @@ void loop() {
     // Scan WiFi channels in sequence
     int channel = channels[channelIndex];
     
-    // Indicate channel scanning
-    if (channel <= 5) {
-      setLed(CRGB::Blue);
-    } else if (channel <= 10) {
-      setLed(CRGB::Green);
-    } else {
-      setLed(CRGB::Yellow);
-    }
+    // #ifdef MATRIX
+    // // Show channel indicator on matrix
+    // clearLed();
+    // // Show channel number
+    // int digitX = 1;
+    // CRGB channelColor;
+    // if (channel <= 5) {
+    //   channelColor = CRGB::Blue;
+    // } else if (channel <= 10) {
+    //   channelColor = CRGB::Green;
+    // } else {
+    //   channelColor = CRGB::Yellow;
+    // }
+    
+    // if (channel < 10) {
+    //   displayDigit(channel, 1, 0, channelColor);
+    // } else {
+    //   displayDigit(1, 0, 0, channelColor);
+    //   displayDigit(channel % 10, 2, 0, channelColor);
+    // }
+    // FastLED.show();
+    // #else
+    // // Non-matrix indicator
+    // if (channel <= 5) {
+    //   setLed(CRGB::Blue);
+    // } else if (channel <= 10) {
+    //   setLed(CRGB::Green);
+    // } else {
+    //   setLed(CRGB::Yellow);
+    // }
+    // #endif
     
     Serial.print("[SUB] Scanning channel ");
     Serial.println(channel);
@@ -596,7 +960,49 @@ void loop() {
     }
     #endif
     
+    // Show network count periodically
+    #ifdef MATRIX
+    if (millis() - lastCountDisplay > 5000) {
+      displayNumber(networkCount);
+      delay(1000);
+      lastCountDisplay = millis();
+    }
+    #endif
+    
     isScanning = false;
+  }
+  
+  // If we've filled the network buffer, display the count until reset
+  if (networkCount >= MAX_NETWORKS) {
+    #ifdef MATRIX
+    if (millis() - lastAnimUpdate > 2000) {
+      // Alternate between showing count and full indicator
+      if ((millis() / 2000) % 2 == 0) {
+        displayNumber(networkCount);
+      } else {
+        // Show "full" pattern - all LEDs red
+        for (int i = 0; i < NUM_LEDS; i++) {
+          leds[i] = CRGB::Red;
+        }
+        FastLED.show();
+      }
+      lastAnimUpdate = millis();
+    }
+    #else
+    // For non-matrix, just blink red to indicate full
+    if (millis() - lastAnimUpdate > 1000) {
+      blinkLEDRed();
+      lastAnimUpdate = millis();
+    }
+    #endif
+  } else {
+    // Normal scan animation between scans
+    #ifdef MATRIX
+    if (millis() - lastAnimUpdate > 150) {
+      scanningAnimation();
+      lastAnimUpdate = millis();
+    }
+    #endif
   }
   
   // Small delay to prevent CPU hogging
