@@ -1,17 +1,31 @@
-# WiFi Network Mapping with M5 Atom Devices
+# `AtomHydra`
+ <img src="https://github.com/user-attachments/assets/fd6c2495-4183-491f-aef0-c023d8073ff0" width=50%>
 
-This repository contains the code for a project utilizing M5 Atom devices for scanning and logging WiFi network data. The system is composed of one Dominant (Dom) unit, an M5 Atom GPS unit, and multiple Subordinate (Sub) units, each being an M5 Atom Matrix unit. The Sub units continuously scan for WiFi networks and communicate their findings to the Dom unit, which logs the data with GPS coordinates onto an SD card in WiGLE CSV format.
+---
+**Branch Mods**
+ - Fixed writing to SD
+ - Fixed CSV output
+ - New web interface dashboard
+
+`// TODO`
+- Sub node stability
+- Dual core Dom 
+- Deduplication
+- QOL
+---
+### About
+This repository contains the code for a project utilizing M5 Atom devices for scanning and logging WiFi network data. The system is composed of one Dominant (Dom) unit, an M5 Atom GPS unit, and multiple Subordinate (Sub) units, each being an M5 Atom Lite/Matrix unit. The Sub units continuously scan for WiFi networks and communicate their findings to the Dom unit, which logs the data with GPS coordinates onto an SD card in WiGLE CSV format.
 
 ## Repository Structure
 
 - `Dom.ino/`: Contains the code for the Dom M5 Atom GPS unit.
-- `Sub.ino/`: Contains the code for the Sub M5 Atom Matrix units.
+- `Sub.ino/`: Contains the code for the Sub M5 Atom Lite/Matrix units.
 - `README.md`: Documentation detailing the project and setup instructions.
 
 ## Hardware Requirements
 
 - M5 Atom GPS unit (for the Dom)
-- Multiple M5 Atom Matrix units (for the Subs)
+- Multiple M5 Atom Lite/Matrix units (for the Subs)
 - SD Card module (for the Dom unit)
 - Necessary cables and power supplies
 
