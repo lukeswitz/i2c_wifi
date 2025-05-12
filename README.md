@@ -2,11 +2,17 @@
  <img src="https://github.com/user-attachments/assets/fd6c2495-4183-491f-aef0-c023d8073ff0" width=50%>
 
 ---
-**Fork Mods**
+**Branch Mods**
  - Fixed writing to SD
  - Fixed CSV output
  - New web interface dashboard
 
+`// TODO`
+- Sub node stability
+- Dual core Dom 
+- Deduplication
+- QOL
+---
 ### About
 This repository contains the code for a project utilizing M5 Atom devices for scanning and logging WiFi network data. The system is composed of one Dominant (Dom) unit, an M5 Atom GPS unit, and multiple Subordinate (Sub) units, each being an M5 Atom Lite/Matrix unit. The Sub units continuously scan for WiFi networks and communicate their findings to the Dom unit, which logs the data with GPS coordinates onto an SD card in WiGLE CSV format.
 
